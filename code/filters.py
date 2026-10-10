@@ -89,3 +89,66 @@ def finite_difference_edges(image, threshold=0.2):
     gradient_magnitude = np.sqrt(dx ** 2 + dy ** 2)
     edges = gradient_magnitude >= threshold
     return dx, dy, gradient_magnitude, edges
+
+
+def gaussian_kernel(sigma, size=None):
+    """Create a normalized 2D Gaussian, defaulting to a radius of ceil(3*sigma)."""
+    if not np.isfinite(sigma) or sigma <= 0:
+        raise ValueError("sigma must be a finite positive number")
+    if size is None:
+        radius = int(np.ceil(3 * sigma))
+        size = 2 * radius + 1
+    if size < 1 or size % 2 == 0:
+        raise ValueError("size must be a positive odd integer")
+
+    coordinates = np.arange(size, dtype=np.float64) - size // 2
+    one_dimensional = np.exp(-(coordinates ** 2) / (2 * sigma ** 2))
+    one_dimensional /= one_dimensional.sum()
+    return np.outer(one_dimensional, one_dimensional)
+
+
+def convolve_full(image, kernel):
+    """Return full 2D true convolution using only NumPy operations."""
+    image = np.asarray(image, dtype=np.float64)
+    kernel = np.asarray(kernel, dtype=np.float64)
+    if image.ndim != 2 or kernel.ndim != 2:
+        raise ValueError("image and kernel must both be 2D arrays")
+    if image.size == 0 or kernel.size == 0:
+        raise ValueError("image and kernel must not be empty")
+
+    kernel_height, kernel_width = kernel.shape
+    padded = np.pad(
+        image,
+        ((kernel_height - 1, kernel_height - 1),
+         (kernel_width - 1, kernel_width - 1)),
+        mode="constant",
+    )
+    windows = np.lib.stride_tricks.sliding_window_view(padded, kernel.shape)
+    flipped_kernel = np.flip(kernel, axis=(0, 1))
+    return np.einsum("ijkl,kl->ij", windows, flipped_kernel)
+
+
+def derivative_of_gaussian_filters(sigma, size=None):
+    """Build horizontal and vertical DoG filters by full convolution."""
+    gaussian = gaussian_kernel(sigma, size=size)
+    derivative_x = np.array([[1.0, 0.0, -1.0]])
+    derivative_y = derivative_x.T
+    dog_x = convolve_full(gaussian, derivative_x)
+    dog_y = convolve_full(gaussian, derivative_y)
+    return gaussian, dog_x, dog_y
+
+
+def derivative_of_gaussian_edges(image, sigma=2.0, threshold=0.2, size=None):
+    """Filter an image with DoG kernels using reflection padding and threshold it."""
+    image = np.asarray(image, dtype=np.float64)
+    if image.ndim != 2 or image.size == 0:
+        raise ValueError("image must be a non-empty 2D grayscale array")
+    if not np.isfinite(threshold) or threshold < 0:
+        raise ValueError("threshold must be a finite non-negative value")
+
+    gaussian, dog_x, dog_y = derivative_of_gaussian_filters(sigma, size=size)
+    ix = convolve_separable(image, dog_x, padding_mode="reflect")
+    iy = convolve_separable(image, dog_y, padding_mode="reflect")
+    gradient_magnitude = np.sqrt(ix ** 2 + iy ** 2)
+    edges = gradient_magnitude >= threshold
+    return gaussian, dog_x, dog_y, ix, iy, gradient_magnitude, edges
