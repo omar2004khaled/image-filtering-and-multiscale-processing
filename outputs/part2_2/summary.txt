@@ -1,0 +1,10 @@
+Part 2.2: Aliasing and Gaussian pre-filtering
+Input: D:\starter_pack\starter_pack\images\part2_frequencies\rings.png
+Input dimensions: 512 x 512
+Downsampling factor: 4 in each dimension
+Output dimensions: 128 x 128
+Gaussian sigma used for saved comparison: 2
+Visual sweep candidates: 0.5, 0.75, 1, 1.25, 1.5, 1.75, 1.8, 1.85, 1.9, 1.95, 2, 2.25
+Visual result: sigma 2.0 was the smallest tested value without visible false circles in the high-frequency corners at the inspected display scale; sigma 1.95 still showed faint residual structure. This is a subjective, image- and viewing-scale-dependent criterion, not a universal cutoff.
+Direct downsampling keeps one sample out of every 4x4 block without first removing frequencies above the new Nyquist limit, so high-frequency rings fold into false lower-frequency patterns (aliasing). Gaussian pre-filtering attenuates those frequencies before sampling.
+Gaussian pyramids use the same principle: blur first, then reduce the image size at each level.

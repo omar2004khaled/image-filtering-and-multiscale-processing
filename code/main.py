@@ -16,6 +16,7 @@ if str(CODE_DIR) not in sys.path:
 
 from benchmark_filters import main as run_convolution_benchmark
 from align_images import align_images, pick_points
+from aliasing import DEFAULT_SIGMA_SWEEP, aliasing_comparison, downsample_by_factor, sigma_sweep
 from filters import derivative_of_gaussian_edges, finite_difference_edges
 from hybrid_images import fourier_log_magnitude, make_hybrid
 from utils import load_image, save_image, show
@@ -503,6 +504,102 @@ def run_part_2_1(options):
     return True
 
 
+def run_part_2_2(sigma):
+    """Compare direct factor-four sampling with Gaussian-prefiltered sampling."""
+    print("Running Part 2.2 correctness tests...")
+    suite = unittest.defaultTestLoader.discover(
+        start_dir=str(CODE_DIR),
+        pattern="test_aliasing.py",
+        top_level_dir=str(CODE_DIR),
+    )
+    result = unittest.TextTestRunner(verbosity=2).run(suite)
+    if not result.wasSuccessful():
+        return False
+
+    image_path = CODE_DIR.parent / "images" / "part2_frequencies" / "rings.png"
+    image = load_image(image_path, gray=True)
+    factor = 4
+    blurred, direct_downsampled, prefiltered_downsampled = aliasing_comparison(
+        image, sigma=sigma, factor=factor
+    )
+    output_directory = CODE_DIR.parent / "outputs" / "part2_2"
+    output_directory.mkdir(parents=True, exist_ok=True)
+
+    outputs = (
+        ("original.png", image),
+        ("direct_downsampled.png", direct_downsampled),
+        ("gaussian_blurred.png", blurred),
+        ("prefiltered_downsampled.png", prefiltered_downsampled),
+    )
+    for filename, output_image in outputs:
+        save_image(output_directory / filename, output_image)
+
+    figure, axes = plt.subplots(1, 4, figsize=(16, 4))
+    comparison_images = (image, direct_downsampled, blurred, prefiltered_downsampled)
+    comparison_titles = (
+        f"Original ({image.shape[1]}x{image.shape[0]})",
+        f"Direct every {factor}th pixel ({direct_downsampled.shape[1]}x{direct_downsampled.shape[0]})",
+        f"Gaussian blur (sigma={sigma:g})",
+        f"Blur then downsample ({prefiltered_downsampled.shape[1]}x{prefiltered_downsampled.shape[0]})",
+    )
+    for axis, output_image, title in zip(axes, comparison_images, comparison_titles):
+        axis.imshow(output_image, cmap="gray", vmin=0, vmax=1, interpolation="nearest")
+        axis.set_title(title)
+        axis.axis("off")
+    figure.tight_layout()
+    figure.savefig(output_directory / "comparison.png", dpi=150)
+    plt.show()
+
+    sweep_results = sigma_sweep(image, DEFAULT_SIGMA_SWEEP, factor=factor)
+    columns = 4
+    rows = (len(sweep_results) + columns - 1) // columns
+    sweep_figure, sweep_axes = plt.subplots(rows, columns, figsize=(14, 3.5 * rows))
+    for axis, (candidate_sigma, reduced_image) in zip(
+        np.ravel(sweep_axes), sweep_results
+    ):
+        axis.imshow(
+            reduced_image,
+            cmap="gray",
+            vmin=0,
+            vmax=1,
+            interpolation="nearest",
+        )
+        axis.set_title(f"sigma={candidate_sigma:g}")
+        axis.axis("off")
+    for axis in np.ravel(sweep_axes)[len(sweep_results):]:
+        axis.axis("off")
+    sweep_figure.suptitle("Rings: Gaussian prefilter sigma sweep before /4 sampling")
+    sweep_figure.tight_layout()
+    sweep_figure.savefig(output_directory / "sigma_sweep.png", dpi=150)
+    plt.show()
+
+    summary = (
+        "Part 2.2: Aliasing and Gaussian pre-filtering\n"
+        f"Input: {image_path}\n"
+        f"Input dimensions: {image.shape[1]} x {image.shape[0]}\n"
+        f"Downsampling factor: {factor} in each dimension\n"
+        f"Output dimensions: {direct_downsampled.shape[1]} x {direct_downsampled.shape[0]}\n"
+        f"Gaussian sigma used for saved comparison: {sigma:g}\n"
+        "Visual sweep candidates: "
+        + ", ".join(f"{candidate:g}" for candidate in DEFAULT_SIGMA_SWEEP)
+        + "\n"
+        "Visual result: sigma 2.0 was the smallest tested value without visible "
+        "false circles in the high-frequency corners at the inspected display scale; "
+        "sigma 1.95 still showed faint residual structure. This is a subjective, "
+        "image- and viewing-scale-dependent criterion, not a universal cutoff.\n"
+        "Direct downsampling keeps one sample out of every 4x4 block without first "
+        "removing frequencies above the new Nyquist limit, so high-frequency rings "
+        "fold into false lower-frequency patterns (aliasing). Gaussian pre-filtering "
+        "attenuates those frequencies before sampling.\n"
+        "Gaussian pyramids use the same principle: blur first, then reduce the image "
+        "size at each level.\n"
+    )
+    (output_directory / "summary.txt").write_text(summary, encoding="utf-8")
+    print(summary)
+    print(f"Saved Part 2.2 images and summary under: {output_directory}")
+    return True
+
+
 def run_section(section, threshold=0.2, sigma=2.0, hybrid_options=None):
     """Run an implemented section, or report that it is not ready yet."""
     if section == "1.2":
@@ -511,6 +608,8 @@ def run_section(section, threshold=0.2, sigma=2.0, hybrid_options=None):
         return run_part_1_3(threshold, sigma)
     if section == "2.1":
         return run_part_2_1(hybrid_options)
+    if section == "2.2":
+        return run_part_2_2(hybrid_options.aliasing_sigma)
     if section != "1.1":
         print(f"Section {section} is not implemented yet.")
         return True
@@ -580,6 +679,12 @@ def main():
         type=float,
         default=4.0,
         help="Part 2.1 high-pass Gaussian sigma (default: 4.0)",
+    )
+    parser.add_argument(
+        "--aliasing-sigma",
+        type=float,
+        default=2.0,
+        help="Part 2.2 Gaussian prefilter sigma (default: 2.0)",
     )
     parser.add_argument(
         "--custom-pair",
