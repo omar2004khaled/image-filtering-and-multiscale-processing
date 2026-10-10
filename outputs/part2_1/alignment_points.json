@@ -1,0 +1,74 @@
+{
+  "cat-tiger": {
+    "first_image": "D:\\starter_pack\\starter_pack\\images\\part1_filters\\cat.jpg",
+    "second_image": "D:\\starter_pack\\starter_pack\\images\\part1_filters\\Tiger.jpg",
+    "points_first": [
+      [
+        538.7494402149573,
+        314.9285714285715
+      ],
+      [
+        233.50985221674875,
+        299.1571428571429
+      ]
+    ],
+    "points_second": [
+      [
+        567.0624447237349,
+        420.5753246753248
+      ],
+      [
+        169.65053763440847,
+        417.1519480519481
+      ]
+    ]
+  },
+  "man-cat": {
+    "first_image": "D:\\starter_pack\\starter_pack\\images\\part2_frequencies\\hybrid_man.jpg",
+    "second_image": "D:\\starter_pack\\starter_pack\\images\\part2_frequencies\\hybrid_cat.jpg",
+    "points_first": [
+      [
+        299.0,
+        341.0
+      ],
+      [
+        443.0,
+        332.0
+      ]
+    ],
+    "points_second": [
+      [
+        605.0,
+        290.0
+      ],
+      [
+        760.0,
+        372.0
+      ]
+    ]
+  },
+  "dodge-motorcycle": {
+    "first_image": "D:\\starter_pack\\starter_pack\\images\\part1_filters\\Dodge Challenger.jpg",
+    "second_image": "D:\\starter_pack\\starter_pack\\images\\part1_filters\\2017 Kawasaki Ninja ZX-10RR Earns that Extra \u201cR\u201d.jpg",
+    "points_first": [
+      [
+        236.71290322580643,
+        392.7709677419355
+      ],
+      [
+        239.80967741935484,
+        208.20322580645166
+      ]
+    ],
+    "points_second": [
+      [
+        359.2272727272728,
+        527.681818181818
+      ],
+      [
+        363.04545454545456,
+        292.22727272727263
+      ]
+    ]
+  }
+}

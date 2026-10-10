@@ -1,0 +1,34 @@
+Part 2.1 hybrid-image run
+sigma low-pass: 4
+sigma high-pass: 4
+
+man-cat:
+  first image: D:\starter_pack\starter_pack\images\part2_frequencies\hybrid_man.jpg
+  second image: D:\starter_pack\starter_pack\images\part2_frequencies\hybrid_cat.jpg
+  sigma low-pass: 4
+  sigma high-pass: 4
+  alignment points first: [(292.0443989071038, 332.99609375), (432.7001366120219, 324.20703125)]
+  alignment points second: [(429.5426136363636, 205.82102272727272), (539.6278409090909, 264.05965909090907)]
+  alignment status: succeeded using README-provided points; preview displayed.
+  note: Required starter pair; visual review shows facial features overlap and the hybrid is interpretable.
+
+cat-tiger:
+  first image: D:\starter_pack\starter_pack\images\part1_filters\cat.jpg
+  second image: D:\starter_pack\starter_pack\images\part1_filters\Tiger.jpg
+  sigma low-pass: 4
+  sigma high-pass: 4
+  alignment points first: [(488.19480519480504, 285.2142857142858), (211.57142857142856, 270.9285714285715)]
+  alignment points second: [(429.79870129870113, 318.9805194805196), (128.4999999999999, 316.38311688311694)]
+  alignment status: succeeded using cached point selection; preview displayed.
+  note: User-provided cat/tiger pair; align the eyes and nose, then review the result.
+
+dodge-motorcycle:
+  first image: D:\starter_pack\starter_pack\images\part1_filters\Dodge Challenger.jpg
+  second image: D:\starter_pack\starter_pack\images\part1_filters\2017 Kawasaki Ninja ZX-10RR Earns that Extra “R”.jpg
+  sigma low-pass: 4
+  sigma high-pass: 4
+  alignment points first: [(236.71290322580643, 392.7709677419355), (239.80967741935484, 208.20322580645166)]
+  alignment points second: [(359.2272727272728, 527.681818181818), (363.04545454545456, 292.22727272727263)]
+  alignment status: succeeded using cached point selection; preview displayed.
+  note: User-provided front-view vehicle pair; align corresponding front features and inspect the hybrid.
+
