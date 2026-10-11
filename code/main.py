@@ -400,15 +400,15 @@ def run_part_2_1(options):
                         "accept clicks, pass original-image coordinates with "
                         "--alignment-points PAIR X1 Y1 X2 Y2 U1 V1 U2 V2."
                     )
-                    with summary_path.open("a", encoding="utf-8") as summary_file:
-                        summary_file.write(
-                            f"{pair_name}:\n"
-                            f"  first image: {first_path}\n"
-                            f"  second image: {second_path}\n"
-                            f"  sigma low-pass: {options.sigma_low:g}\n"
-                            f"  sigma high-pass: {options.sigma_high:g}\n"
-                            "  alignment status: incomplete; no points were selected.\n\n"
-                        )
+                with summary_path.open("a", encoding="utf-8") as summary_file:
+                    summary_file.write(
+                        f"{pair_name}:\n"
+                        f"  first image: {first_path}\n"
+                        f"  second image: {second_path}\n"
+                        f"  sigma low-pass: {options.sigma_low:g}\n"
+                        f"  sigma high-pass: {options.sigma_high:g}\n"
+                        "  alignment status: incomplete; no points were selected.\n\n"
+                    )
                     return False
                 original_points_first = _scale_points(
                     selected_points_first, first_image.shape, first_original.shape
