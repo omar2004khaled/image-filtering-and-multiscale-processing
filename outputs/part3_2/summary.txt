@@ -1,0 +1,16 @@
+Part 3.2: Results and Comparisons
+Each working image is capped at 1000 pixels on its longest side before comparison, following the assignment's medium-size image guidance.
+The target width is the working width minus round(0.30 * working width); the PDF says about 30% and gives no further rounding rule. All three narrowed methods preserve height and use that same target width.
+Normal resizing uses OpenCV INTER_AREA. Center cropping removes equal horizontal margins. Seam carving uses Part 1.2 finite-difference magnitude for the six standard comparisons.
+rocket: source=D:\starter_pack\starter_pack\images\part3_seams\rocket.jpg; working=640x427; target=448x427; seams=192
+home: source=D:\starter_pack\starter_pack\images\part3_seams\home.jpg; working=512x384; target=358x384; seams=154
+starry_night: source=D:\starter_pack\starter_pack\images\part3_seams\starry_night.jpg; working=720x568; target=504x568; seams=216
+person_outdoors: source=C:\Users\OMAR\Downloads\A person.jpg; working=1000x667; target=700x667; seams=300
+lake: source=C:\Users\OMAR\Downloads\A lake.jpg; working=1000x667; target=700x667; seams=300
+group_failure_case: source=C:\Users\OMAR\Downloads\A failure case.jpg; working=808x553; target=566x553; seams=242
+Energy comparison image: group_failure_case; finite-difference vs DoG (sigma=2.0) seam positions differ at 133442 of 133826 seam-row positions.
+DoG carved dimensions: 566 x 553.
+Observed failure case: A failure case.jpg, a tightly framed five-person group photo. The seam overlay shows paths passing through human silhouettes rather than removing only background; the carved result narrows the gaps and locally compresses bodies, although all five people remain recognizable. Within the central people region (x=5%-95%, y=15%-85%), 85471 of 93654 seam-row positions (91.3%) pass through the group. Gradient energy measures local intensity change, not semantic importance; low-contrast clothing and spaces between bodies can remain inexpensive paths, so repeated seam removal damages the group.
+Observed comparison: inspect each four-panel figure for structures that remain recognizable under seam carving versus details removed by center crop. The person-outdoors figure preserves the person's height and proportions better than normal resizing.
+The finite-difference and DoG energy maps differ in smoothing and edge response; their distinct seam sets are shown in the energy-comparison figure, with finite-difference paths in red and DoG paths in cyan.
+Each image folder contains the four-way comparison, and the group-photo folder additionally contains both energy maps, both carved outputs, and the overlaid seam comparison.

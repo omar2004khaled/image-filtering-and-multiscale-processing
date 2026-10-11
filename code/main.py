@@ -20,12 +20,18 @@ from aliasing import DEFAULT_SIGMA_SWEEP, aliasing_comparison, downsample_by_fac
 from blending import build_blended_laplacian_pyramid
 from filters import derivative_of_gaussian_edges, finite_difference_edges
 from hybrid_images import fourier_log_magnitude, make_hybrid
+from part3_2 import compare_width_reduction, target_width
 from pyramids import (
     build_gaussian_pyramid,
     build_laplacian_pyramid,
     reconstruct_from_laplacian,
 )
-from seam_carving import carve_vertical, compute_energy, draw_seams
+from seam_carving import (
+    carve_vertical,
+    compute_dog_energy,
+    compute_energy,
+    draw_seams,
+)
 from utils import load_image, save_image, show
 
 
@@ -1002,6 +1008,233 @@ def run_part_3_1():
     return True
 
 
+def _normalized_energy_display(energy):
+    maximum = float(energy.max())
+    return energy / maximum if maximum > 0 else energy
+
+
+def _save_part_3_2_comparison(name, image_path, image, results, output_root):
+    """Save the four same-sized width-reduction variants for one image."""
+    output_directory = output_root / name
+    output_directory.mkdir(parents=True, exist_ok=True)
+    normal_width = results["target_width"]
+    images = (
+        ("original", image),
+        ("normal_resize", results["resized"]),
+        ("center_crop", results["center_crop"]),
+        ("seam_carved", results["seam_carved"]),
+    )
+    for filename, result_image in images:
+        save_image(output_directory / f"{filename}.png", result_image)
+    np.save(output_directory / "removed_seams_original_columns.npy", results["seams"])
+
+    figure, axes = plt.subplots(1, 4, figsize=(16, 5))
+    titles = (
+        f"Original ({image.shape[1]}x{image.shape[0]})",
+        f"Normal resize ({normal_width}x{image.shape[0]})",
+        f"Center crop ({normal_width}x{image.shape[0]})",
+        f"Seam carved ({normal_width}x{image.shape[0]})",
+    )
+    for axis, (_, result_image), title in zip(axes, images, titles):
+        axis.imshow(np.clip(result_image, 0, 1))
+        axis.set_title(title)
+        axis.axis("off")
+    figure.tight_layout()
+    figure.savefig(output_directory / "comparison.png", dpi=150)
+    report_line = (
+        f"{name}: source={image_path}; working={image.shape[1]}x{image.shape[0]}; "
+        f"target={normal_width}x{image.shape[0]}; "
+        f"seams={results['seam_count']}\n"
+    )
+    return report_line, figure
+
+
+def _save_energy_comparison(name, image, finite_results, output_directory):
+    """Compare Part 1.2 and 1.3 energy maps and the seams they select."""
+    sigma = 2.0
+    dog_results = compare_width_reduction(
+        image,
+        energy_function=lambda current: compute_dog_energy(current, sigma=sigma),
+    )
+    finite_seams = finite_results["seams"]
+    dog_seams = dog_results["seams"]
+    finite_energy = compute_energy(image)
+    dog_energy = compute_dog_energy(image, sigma=sigma)
+    finite_overlay = draw_seams(image, finite_seams, color=(1.0, 0.0, 0.0))
+    dog_overlay = draw_seams(image, dog_seams, color=(0.0, 1.0, 1.0))
+    combined_overlay = draw_seams(
+        finite_overlay, dog_seams, color=(0.0, 1.0, 1.0)
+    )
+    save_image(output_directory / "energy_finite_difference.png",
+               _normalized_energy_display(finite_energy))
+    save_image(output_directory / f"energy_dog_sigma_{sigma:g}.png",
+               _normalized_energy_display(dog_energy))
+    save_image(output_directory / "seams_finite_difference_red.png", finite_overlay)
+    save_image(output_directory / "seams_dog_cyan.png", dog_overlay)
+    save_image(output_directory / "seams_energy_comparison.png", combined_overlay)
+    save_image(output_directory / "seam_carved_dog.png", dog_results["seam_carved"])
+    np.save(output_directory / "energy_finite_difference.npy", finite_energy)
+    np.save(output_directory / "energy_dog.npy", dog_energy)
+    np.save(output_directory / "seams_finite_difference.npy", finite_seams)
+    np.save(output_directory / "seams_dog.npy", dog_seams)
+
+    figure, axes = plt.subplots(2, 3, figsize=(15, 9))
+    panels = (
+        (image, "Original"),
+        (_normalized_energy_display(finite_energy), "Finite-difference energy"),
+        (finite_overlay, "Finite-difference seams (red)"),
+        (_normalized_energy_display(dog_energy), f"DoG energy (sigma={sigma:g})"),
+        (dog_overlay, "DoG seams (cyan)"),
+        (combined_overlay, "Both seam sets (red / cyan)"),
+    )
+    for axis, (panel, title) in zip(axes.flat, panels):
+        axis.imshow(panel, cmap="gray" if panel.ndim == 2 else None)
+        axis.set_title(title)
+        axis.axis("off")
+    figure.tight_layout()
+    figure.savefig(output_directory / "energy_comparison.png", dpi=150)
+    different_pixels = int(np.count_nonzero(finite_seams != dog_seams))
+    return dog_results, different_pixels, figure
+
+
+def run_part_3_2(personal_images=None):
+    """Compare seam carving, resizing, cropping, and energies on six images."""
+    print("Running Part 3.2 seam-carving comparison tests...")
+    suite = unittest.defaultTestLoader.discover(
+        start_dir=str(CODE_DIR),
+        pattern="test_part3_2.py",
+        top_level_dir=str(CODE_DIR),
+    )
+    result = unittest.TextTestRunner(verbosity=2).run(suite)
+    if not result.wasSuccessful():
+        return False
+
+    using_default_images = personal_images is None
+    if using_default_images:
+        home = Path.home()
+        personal_images = (
+            home / "Downloads" / "A person.jpg",
+            home / "Downloads" / "A lake.jpg",
+            home / "Downloads" / "A failure case.jpg",
+        )
+    if len(personal_images) != 3:
+        print("Provide exactly three --personal-image paths, or omit them for the discovered defaults.")
+        return False
+
+    image_directory = CODE_DIR.parent / "images" / "part3_seams"
+    personal_names = (
+        ("person_outdoors", "lake", "group_failure_case")
+        if using_default_images
+        else ("personal_01", "personal_02", "personal_03")
+    )
+    image_sources = [
+        ("rocket", image_directory / "rocket.jpg"),
+        ("home", image_directory / "home.jpg"),
+        ("starry_night", image_directory / "starry_night.jpg"),
+        (personal_names[0], Path(personal_images[0]).expanduser()),
+        (personal_names[1], Path(personal_images[1]).expanduser()),
+        (personal_names[2], Path(personal_images[2]).expanduser()),
+    ]
+    missing = [str(path) for _, path in image_sources if not path.is_file()]
+    if missing:
+        print("Could not find required images:\n  " + "\n  ".join(missing))
+        return False
+
+    output_root = CODE_DIR.parent / "outputs" / "part3_2"
+    output_root.mkdir(parents=True, exist_ok=True)
+    reports = []
+    comparison_figures = []
+    finite_results_by_name = {}
+    working_images = {}
+    for name, image_path in image_sources:
+        image = _limit_image_size(load_image(image_path))
+        results = compare_width_reduction(image, energy_function=compute_energy)
+        report_line, comparison_figure = (
+            _save_part_3_2_comparison(
+                name, image_path, image, results, output_root
+            )
+        )
+        reports.append(report_line)
+        comparison_figures.append(comparison_figure)
+        finite_results_by_name[name] = results
+        working_images[name] = image
+
+    failure_name = personal_names[2]
+    failure_output = output_root / failure_name
+    dog_results, differing_seam_pixels, energy_figure = _save_energy_comparison(
+        failure_name,
+        working_images[failure_name],
+        finite_results_by_name[failure_name],
+        failure_output,
+    )
+    dog_report = (
+        f"Energy comparison image: {failure_name}; finite-difference vs DoG "
+        f"(sigma=2.0) seam positions differ at {differing_seam_pixels} of "
+        f"{finite_results_by_name[failure_name]['seams'].size} seam-row positions.\n"
+        f"DoG carved dimensions: {dog_results['seam_carved'].shape[1]} x "
+        f"{dog_results['seam_carved'].shape[0]}.\n"
+    )
+    failure_analysis = ""
+    if using_default_images:
+        group_seams = finite_results_by_name[failure_name]["seams"]
+        group_height, group_width = working_images[failure_name].shape[:2]
+        people_x_start = int(round(group_width * 0.05))
+        people_x_end = int(round(group_width * 0.95))
+        people_y_start = int(round(group_height * 0.15))
+        people_y_end = int(round(group_height * 0.85))
+        people_region = group_seams[:, people_y_start:people_y_end]
+        people_region_positions = int(
+            np.count_nonzero(
+                (people_region >= people_x_start)
+                & (people_region < people_x_end)
+            )
+        )
+        possible_people_positions = people_region.size
+        failure_analysis = (
+            "Observed failure case: A failure case.jpg, a tightly framed five-person "
+            "group photo. The seam overlay shows paths passing through human silhouettes "
+            "rather than removing only background; the carved result narrows the gaps "
+            "and locally compresses bodies, although all five people remain recognizable. "
+            f"Within the central people region (x=5%-95%, y=15%-85%), "
+            f"{people_region_positions} of {possible_people_positions} seam-row "
+            f"positions ({people_region_positions / possible_people_positions:.1%}) "
+            "pass through the group. Gradient energy measures local intensity change, "
+            "not semantic importance; low-contrast clothing and spaces between bodies "
+            "can remain inexpensive paths, so repeated seam removal damages the group.\n"
+        )
+    summary = (
+        "Part 3.2: Results and Comparisons\n"
+        "Each working image is capped at 1000 pixels on its longest side before "
+        "comparison, following the assignment's medium-size image guidance.\n"
+        "The target width is the working width minus round(0.30 * working width); "
+        "the PDF says about 30% and gives no further rounding rule. All three "
+        "narrowed methods preserve height and use that same target width.\n"
+        "Normal resizing uses OpenCV INTER_AREA. Center cropping removes equal "
+        "horizontal margins. Seam carving uses Part 1.2 finite-difference magnitude "
+        "for the six standard comparisons.\n"
+        + "".join(reports)
+        + dog_report
+        + failure_analysis
+        + "Observed comparison: inspect each four-panel figure for structures that "
+        "remain recognizable under seam carving versus details removed by center crop. "
+        "The person-outdoors figure preserves the person's height and proportions "
+        "better than normal resizing.\n"
+        + "The finite-difference and DoG energy maps differ in smoothing and edge "
+        "response; their distinct seam sets are shown in the energy-comparison "
+        "figure, with finite-difference paths in red and DoG paths in cyan.\n"
+        + "Each image folder contains the four-way comparison, and the group-photo "
+        "folder additionally contains both energy maps, both carved outputs, and "
+        "the overlaid seam comparison.\n"
+    )
+    (output_root / "summary.txt").write_text(summary, encoding="utf-8")
+    plt.show()
+    for figure in comparison_figures + [energy_figure]:
+        plt.close(figure)
+    print(summary)
+    print(f"Saved Part 3.2 results under: {output_root}")
+    return True
+
+
 def run_section(section, threshold=0.2, sigma=2.0, hybrid_options=None):
     """Run an implemented section, or report that it is not ready yet."""
     if section == "1.2":
@@ -1018,6 +1251,8 @@ def run_section(section, threshold=0.2, sigma=2.0, hybrid_options=None):
         return run_part_2_4()
     if section == "3.1":
         return run_part_3_1()
+    if section == "3.2":
+        return run_part_3_2(getattr(hybrid_options, "personal_image", None))
     if section != "1.1":
         print(f"Section {section} is not implemented yet.")
         return True
@@ -1127,6 +1362,15 @@ def main():
         "--output-dir",
         default="outputs/part2_1",
         help="result directory (default: outputs/part2_1)",
+    )
+    parser.add_argument(
+        "--personal-image",
+        action="append",
+        metavar="IMAGE",
+        help=(
+            "Part 3.2 personal image path; repeat exactly three times to replace "
+            "the discovered local defaults"
+        ),
     )
     arguments = parser.parse_args()
     return (

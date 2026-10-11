@@ -1,7 +1,7 @@
 """Seam carving operations for Part 3.1."""
 import numpy as np
 
-from filters import finite_difference_edges
+from filters import derivative_of_gaussian_edges, finite_difference_edges
 from hybrid_images import to_grayscale
 
 
@@ -23,6 +23,13 @@ def compute_energy(image):
     gray_image = to_grayscale(image)
     _, _, gradient_magnitude, _ = finite_difference_edges(gray_image)
     return gradient_magnitude
+
+
+def compute_dog_energy(image, sigma=2.0):
+    """Return the Part 1.3 DoG gradient magnitude as a pixel-energy map."""
+    image = _as_image(image)
+    gray_image = to_grayscale(image)
+    return derivative_of_gaussian_edges(gray_image, sigma=sigma)[5]
 
 
 def find_vertical_seam(energy):
@@ -75,11 +82,13 @@ def remove_vertical_seam(image, seam):
     return image[keep].reshape(remaining_shape)
 
 
-def carve_vertical(image, seam_count):
-    """Remove vertical seams and return the carved image and original columns."""
+def carve_vertical(image, seam_count, energy_function=compute_energy):
+    """Remove vertical seams using energy_function and track original columns."""
     image = _as_image(image)
     if not isinstance(seam_count, (int, np.integer)) or seam_count < 0:
         raise ValueError("seam_count must be a non-negative integer")
+    if not callable(energy_function):
+        raise ValueError("energy_function must be callable")
     height, width = image.shape[:2]
     if seam_count >= width:
         raise ValueError("seam_count must be smaller than the image width")
@@ -89,7 +98,10 @@ def carve_vertical(image, seam_count):
     removed_seams = []
     rows = np.arange(height)
     for _ in range(seam_count):
-        seam = find_vertical_seam(compute_energy(carved))
+        energy = np.asarray(energy_function(carved), dtype=np.float64)
+        if energy.shape != carved.shape[:2] or not np.isfinite(energy).all():
+            raise ValueError("energy_function must return a finite map matching the image")
+        seam = find_vertical_seam(energy)
         removed_seams.append(original_columns[rows, seam].copy())
         carved = remove_vertical_seam(carved, seam)
         original_columns = remove_vertical_seam(original_columns, seam)
@@ -97,11 +109,13 @@ def carve_vertical(image, seam_count):
     return carved, seams
 
 
-def carve_horizontal(image, seam_count):
+def carve_horizontal(image, seam_count, energy_function=compute_energy):
     """Remove horizontal seams by transposing and reusing vertical carving."""
     image = _as_image(image)
     transposed = np.swapaxes(image, 0, 1)
-    carved, seams = carve_vertical(transposed, seam_count)
+    carved, seams = carve_vertical(
+        transposed, seam_count, energy_function=energy_function
+    )
     return np.swapaxes(carved, 0, 1), seams
 
 
