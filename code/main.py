@@ -17,6 +17,7 @@ if str(CODE_DIR) not in sys.path:
 from benchmark_filters import main as run_convolution_benchmark
 from align_images import align_images, pick_points
 from aliasing import DEFAULT_SIGMA_SWEEP, aliasing_comparison, downsample_by_factor, sigma_sweep
+from blending import build_blended_laplacian_pyramid
 from filters import derivative_of_gaussian_edges, finite_difference_edges
 from hybrid_images import fourier_log_magnitude, make_hybrid
 from pyramids import (
@@ -751,6 +752,179 @@ def run_part_2_3():
     return True
 
 
+def _ellipse_mask(shape, center, radii):
+    """Return a hard-edged mask that selects the second image inside an ellipse."""
+    height, width = shape
+    center_x, center_y = center
+    radius_x, radius_y = radii
+    coordinates_y, coordinates_x = np.ogrid[:height, :width]
+    inside = (
+        ((coordinates_x - center_x) / radius_x) ** 2
+        + ((coordinates_y - center_y) / radius_y) ** 2
+        <= 1.0
+    )
+    mask = np.ones((height, width), dtype=np.float64)
+    mask[inside] = 0.0
+    return mask
+
+
+def _save_blend_pyramid(levels, output_directory, folder_name, figure_name, prefix,
+                        signed=False):
+    """Save pyramid arrays and a labeled display figure for a blend example."""
+    level_directory = output_directory / folder_name
+    level_directory.mkdir(parents=True, exist_ok=True)
+    figure, axes = plt.subplots(1, len(levels), figsize=(3.0 * len(levels), 3.5))
+    axes = np.atleast_1d(axes)
+    for index, (axis, level) in enumerate(zip(axes, levels)):
+        if signed and index < len(levels) - 1:
+            maximum = float(np.max(np.abs(level)))
+            displayed = (
+                np.full(level.shape, 0.5)
+                if maximum == 0
+                else np.clip(0.5 + 0.5 * level / maximum, 0, 1)
+            )
+        else:
+            displayed = np.clip(level, 0, 1)
+        axis.imshow(
+            displayed,
+            cmap="gray" if level.ndim == 2 else None,
+            vmin=0 if level.ndim == 2 else None,
+            vmax=1 if level.ndim == 2 else None,
+            interpolation="nearest",
+        )
+        axis.set_title(f"{prefix}{index} ({level.shape[1]}x{level.shape[0]})")
+        axis.axis("off")
+        np.save(level_directory / f"level_{index:02d}.npy", level)
+        save_image(level_directory / f"level_{index:02d}.png", displayed)
+    figure.tight_layout()
+    figure.savefig(output_directory / figure_name, dpi=150)
+    return figure
+
+
+def _run_blend_example(name, first, second, mask, description, min_size=16):
+    """Build, save and summarize one multiresolution blend example."""
+    if first.shape[:2] != mask.shape or second.shape != first.shape:
+        raise ValueError("blend images and mask must have matching dimensions")
+    blended_levels, first_laplacian, second_laplacian, mask_gaussian = (
+        build_blended_laplacian_pyramid(first, second, mask, min_size=min_size)
+    )
+    blended = reconstruct_from_laplacian(blended_levels)
+    output_directory = CODE_DIR.parent / "outputs" / "part2_4" / name
+    output_directory.mkdir(parents=True, exist_ok=True)
+
+    save_image(output_directory / "first_image.png", first)
+    save_image(output_directory / "second_image.png", second)
+    save_image(output_directory / "mask.png", mask)
+    save_image(output_directory / "blended.png", blended)
+    np.save(output_directory / "first_image.npy", first)
+    np.save(output_directory / "second_image.npy", second)
+    np.save(output_directory / "mask.npy", mask)
+    np.save(output_directory / "blended.npy", blended)
+
+    for label, levels in (
+        ("first_laplacian_pyramid", first_laplacian),
+        ("second_laplacian_pyramid", second_laplacian),
+    ):
+        level_directory = output_directory / label
+        level_directory.mkdir(parents=True, exist_ok=True)
+        for index, level in enumerate(levels):
+            np.save(level_directory / f"level_{index:02d}.npy", level)
+    mask_figure = _save_blend_pyramid(
+        mask_gaussian,
+        output_directory,
+        "mask_gaussian_pyramid",
+        "mask_gaussian_pyramid.png",
+        "M",
+    )
+    blended_figure = _save_blend_pyramid(
+        blended_levels,
+        output_directory,
+        "blended_laplacian_pyramid",
+        "blended_laplacian_pyramid.png",
+        "L",
+        signed=True,
+    )
+
+    comparison, axes = plt.subplots(1, 4, figsize=(15, 4))
+    comparison_images = (first, second, mask, np.clip(blended, 0, 1))
+    comparison_titles = ("First image", "Second image", "Sharp input mask", "Multiresolution blend")
+    for axis, image, title in zip(axes, comparison_images, comparison_titles):
+        axis.imshow(
+            image,
+            cmap="gray" if image.ndim == 2 else None,
+            vmin=0 if image.ndim == 2 else None,
+            vmax=1 if image.ndim == 2 else None,
+        )
+        axis.set_title(title)
+        axis.axis("off")
+    comparison.tight_layout()
+    comparison.savefig(output_directory / "comparison.png", dpi=150)
+    plt.show()
+    plt.close(mask_figure)
+    plt.close(blended_figure)
+    plt.close(comparison)
+
+    level_shapes = ", ".join(
+        f"{level.shape[1]}x{level.shape[0]}" for level in mask_gaussian
+    )
+    summary = (
+        f"Part 2.4 multiresolution blend: {name}\n"
+        f"Description: {description}\n"
+        f"Pyramid levels (largest to smallest): {level_shapes}\n"
+        f"Blend formula at each level: M * L1 + (1 - M) * L2\n"
+        "The input mask is binary and unchanged. Its Gaussian pyramid softens the "
+        "transition over wider areas at coarser levels. Source Laplacian pyramids "
+        "and the blended reconstruction are stored as floating-point .npy files.\n"
+    )
+    (output_directory / "summary.txt").write_text(summary, encoding="utf-8")
+    print(summary)
+    return output_directory
+
+
+def run_part_2_4():
+    """Create the starter-pack oraple and irregular eye-on-hand blend examples."""
+    print("Running Part 2.4 multiresolution blending tests...")
+    suite = unittest.defaultTestLoader.discover(
+        start_dir=str(CODE_DIR),
+        pattern="test_blending.py",
+        top_level_dir=str(CODE_DIR),
+    )
+    result = unittest.TextTestRunner(verbosity=2).run(suite)
+    if not result.wasSuccessful():
+        return False
+
+    image_directory = CODE_DIR.parent / "images" / "part2_frequencies"
+    apple = load_image(image_directory / "apple.jpg")
+    orange = load_image(image_directory / "orange.jpg")
+    oraple_mask = np.zeros(apple.shape[:2], dtype=np.float64)
+    oraple_mask[:, :apple.shape[1] // 2] = 1.0
+    _run_blend_example(
+        "apple-orange",
+        apple,
+        orange,
+        oraple_mask,
+        "Apple is selected on the left; orange is selected on the right.",
+    )
+
+    hand = load_image(image_directory / "hand.jpg")
+    eye = load_image(image_directory / "eye.jpg")
+    hand_points = [(170, 400), (390, 410)]
+    eye_points = [(165, 255), (470, 265)]
+    aligned_eye = align_images(hand, eye, hand_points, eye_points)
+    eye_mask = _ellipse_mask(hand.shape[:2], center=(270, 385), radii=(140, 75))
+    _run_blend_example(
+        "eye-on-hand",
+        hand,
+        aligned_eye,
+        eye_mask,
+        "Eye aligned to the palm using README landmarks; the black elliptical mask "
+        "selects the eye and the white region keeps the hand.",
+    )
+
+    print("Saved Part 2.4 examples under: outputs/part2_4")
+    return True
+
+
 def run_section(section, threshold=0.2, sigma=2.0, hybrid_options=None):
     """Run an implemented section, or report that it is not ready yet."""
     if section == "1.2":
@@ -763,6 +937,8 @@ def run_section(section, threshold=0.2, sigma=2.0, hybrid_options=None):
         return run_part_2_2(hybrid_options.aliasing_sigma)
     if section == "2.3":
         return run_part_2_3()
+    if section == "2.4":
+        return run_part_2_4()
     if section != "1.1":
         print(f"Section {section} is not implemented yet.")
         return True

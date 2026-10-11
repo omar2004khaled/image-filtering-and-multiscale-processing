@@ -1,0 +1,5 @@
+Part 2.4 multiresolution blend: apple-orange
+Description: Apple is selected on the left; orange is selected on the right.
+Pyramid levels (largest to smallest): 512x512, 256x256, 128x128, 64x64, 32x32, 16x16
+Blend formula at each level: M * L1 + (1 - M) * L2
+The input mask is binary and unchanged. Its Gaussian pyramid softens the transition over wider areas at coarser levels. Source Laplacian pyramids and the blended reconstruction are stored as floating-point .npy files.

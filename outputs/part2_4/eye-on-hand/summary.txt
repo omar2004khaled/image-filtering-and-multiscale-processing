@@ -1,0 +1,5 @@
+Part 2.4 multiresolution blend: eye-on-hand
+Description: Eye aligned to the palm using README landmarks; the black elliptical mask selects the eye and the white region keeps the hand.
+Pyramid levels (largest to smallest): 900x675, 450x338, 225x169, 113x85, 57x43, 29x22, 15x11
+Blend formula at each level: M * L1 + (1 - M) * L2
+The input mask is binary and unchanged. Its Gaussian pyramid softens the transition over wider areas at coarser levels. Source Laplacian pyramids and the blended reconstruction are stored as floating-point .npy files.
