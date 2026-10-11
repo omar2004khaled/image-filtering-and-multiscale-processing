@@ -25,6 +25,7 @@ from pyramids import (
     build_laplacian_pyramid,
     reconstruct_from_laplacian,
 )
+from seam_carving import carve_vertical, compute_energy, draw_seams
 from utils import load_image, save_image, show
 
 
@@ -925,6 +926,82 @@ def run_part_2_4():
     return True
 
 
+def run_part_3_1():
+    """Remove 30% of the Broadway Tower image's width with minimum-energy seams."""
+    print("Running Part 3.1 seam-carving tests...")
+    suite = unittest.defaultTestLoader.discover(
+        start_dir=str(CODE_DIR),
+        pattern="test_seam_carving.py",
+        top_level_dir=str(CODE_DIR),
+    )
+    result = unittest.TextTestRunner(verbosity=2).run(suite)
+    if not result.wasSuccessful():
+        return False
+
+    image_path = CODE_DIR.parent / "images" / "part3_seams" / "broadway_tower.png"
+    image = load_image(image_path)
+    height, width = image.shape[:2]
+    seam_count = int(round(width * 0.30))
+    carved, seams = carve_vertical(image, seam_count)
+    energy = compute_energy(image)
+    seam_overlay = draw_seams(image, seams)
+    energy_maximum = float(energy.max())
+    energy_display = energy / energy_maximum if energy_maximum > 0 else energy
+
+    output_directory = CODE_DIR.parent / "outputs" / "part3_1"
+    output_directory.mkdir(parents=True, exist_ok=True)
+    save_image(output_directory / "original.png", image)
+    save_image(output_directory / "energy.png", energy_display)
+    save_image(output_directory / "removed_seams.png", seam_overlay)
+    save_image(output_directory / "carved.png", carved)
+    np.save(output_directory / "energy.npy", energy)
+    np.save(output_directory / "removed_seams_original_columns.npy", seams)
+    np.save(output_directory / "carved.npy", carved)
+
+    figure, axes = plt.subplots(1, 4, figsize=(16, 5))
+    for axis, displayed, title in zip(
+        axes,
+        (image, energy_display, seam_overlay, carved),
+        ("Original", "Gradient-magnitude energy", "Removed seams (red)", "Carved image"),
+    ):
+        axis.imshow(
+            displayed,
+            cmap="gray" if displayed.ndim == 2 else None,
+            vmin=0 if displayed.ndim == 2 else None,
+            vmax=1 if displayed.ndim == 2 else None,
+        )
+        axis.set_title(title)
+        axis.axis("off")
+    figure.tight_layout()
+    figure.savefig(output_directory / "comparison.png", dpi=150)
+    plt.show()
+    plt.close(figure)
+
+    summary = (
+        "Part 3.1: Finding and Removing Seams\n"
+        f"Input: {image_path}\n"
+        f"Original dimensions: {width} x {height}\n"
+        "Requested reduction: 30% of original width\n"
+        "Rounding: nearest whole seam count; round(0.30 * width)\n"
+        f"Seams removed: {seam_count}\n"
+        f"Final dimensions: {carved.shape[1]} x {carved.shape[0]}\n"
+        "Energy: Part 1.2 finite-difference gradient magnitude on grayscale intensity.\n"
+        "The dynamic program stores the cheapest cumulative cost ending at every "
+        "pixel and its predecessor, then backtracks from the cheapest bottom-row "
+        "pixel. This solves each seam in O(height * width) time. Trying every "
+        "connected path would take exponential time because each row can branch "
+        "to up to three columns below. Energy is recomputed after every removal.\n"
+        "Original-column coordinates are tracked through each removal so the red "
+        "overlay shows each seam at its location in the original image.\n"
+        "Horizontal seam removal is available through carve_horizontal(), which "
+        "transposes the image and reuses vertical seam carving.\n"
+    )
+    (output_directory / "summary.txt").write_text(summary, encoding="utf-8")
+    print(summary)
+    print(f"Saved Part 3.1 results under: {output_directory}")
+    return True
+
+
 def run_section(section, threshold=0.2, sigma=2.0, hybrid_options=None):
     """Run an implemented section, or report that it is not ready yet."""
     if section == "1.2":
@@ -939,6 +1016,8 @@ def run_section(section, threshold=0.2, sigma=2.0, hybrid_options=None):
         return run_part_2_3()
     if section == "2.4":
         return run_part_2_4()
+    if section == "3.1":
+        return run_part_3_1()
     if section != "1.1":
         print(f"Section {section} is not implemented yet.")
         return True

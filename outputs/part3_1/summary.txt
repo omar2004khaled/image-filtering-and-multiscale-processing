@@ -1,0 +1,11 @@
+Part 3.1: Finding and Removing Seams
+Input: D:\starter_pack\starter_pack\images\part3_seams\broadway_tower.png
+Original dimensions: 714 x 484
+Requested reduction: 30% of original width
+Rounding: nearest whole seam count; round(0.30 * width)
+Seams removed: 214
+Final dimensions: 500 x 484
+Energy: Part 1.2 finite-difference gradient magnitude on grayscale intensity.
+The dynamic program stores the cheapest cumulative cost ending at every pixel and its predecessor, then backtracks from the cheapest bottom-row pixel. This solves each seam in O(height * width) time. Trying every connected path would take exponential time because each row can branch to up to three columns below. Energy is recomputed after every removal.
+Original-column coordinates are tracked through each removal so the red overlay shows each seam at its location in the original image.
+Horizontal seam removal is available through carve_horizontal(), which transposes the image and reuses vertical seam carving.
