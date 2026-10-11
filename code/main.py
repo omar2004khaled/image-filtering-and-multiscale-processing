@@ -19,6 +19,11 @@ from align_images import align_images, pick_points
 from aliasing import DEFAULT_SIGMA_SWEEP, aliasing_comparison, downsample_by_factor, sigma_sweep
 from filters import derivative_of_gaussian_edges, finite_difference_edges
 from hybrid_images import fourier_log_magnitude, make_hybrid
+from pyramids import (
+    build_gaussian_pyramid,
+    build_laplacian_pyramid,
+    reconstruct_from_laplacian,
+)
 from utils import load_image, save_image, show
 
 
@@ -600,6 +605,152 @@ def run_part_2_2(sigma):
     return True
 
 
+def _pyramid_figure(levels, output_path, prefix, signed=False):
+    """Save a labeled figure and level images for one image pyramid."""
+    figure, axes = plt.subplots(1, len(levels), figsize=(3.2 * len(levels), 3.6))
+    axes = np.atleast_1d(axes)
+    for index, (axis, level) in enumerate(zip(axes, levels)):
+        height, width = level.shape[:2]
+        if signed and index < len(levels) - 1:
+            maximum = float(np.max(np.abs(level)))
+            displayed = (
+                np.full(level.shape, 0.5)
+                if maximum == 0
+                else np.clip(0.5 + 0.5 * level / maximum, 0, 1)
+            )
+        else:
+            displayed = np.clip(level, 0, 1)
+        axis.imshow(
+            displayed,
+            cmap="gray" if level.ndim == 2 else None,
+            vmin=0 if level.ndim == 2 else None,
+            vmax=1 if level.ndim == 2 else None,
+            interpolation="nearest",
+        )
+        axis.set_title(f"{prefix}{index} ({width}x{height})")
+        axis.axis("off")
+        level_directory = output_path.parent / (
+            "laplacian_pyramid" if signed else "gaussian_pyramid"
+        )
+        level_directory.mkdir(parents=True, exist_ok=True)
+        save_image(level_directory / f"level_{index:02d}.png", displayed)
+        np.save(level_directory / f"level_{index:02d}.npy", level)
+    figure.tight_layout()
+    figure.savefig(output_path, dpi=150)
+    return figure
+
+
+def run_part_2_3():
+    """Build and reconstruct Gaussian and Laplacian pyramids for facade.png."""
+    print("Running Part 2.3 pyramid tests...")
+    suite = unittest.defaultTestLoader.discover(
+        start_dir=str(CODE_DIR),
+        pattern="test_pyramids.py",
+        top_level_dir=str(CODE_DIR),
+    )
+    result = unittest.TextTestRunner(verbosity=2).run(suite)
+    if not result.wasSuccessful():
+        return False
+
+    image_path = CODE_DIR.parent / "images" / "part1_filters" / "facade.png"
+    image = load_image(image_path)
+    gaussian = build_gaussian_pyramid(image)
+    laplacian = build_laplacian_pyramid(gaussian)
+    reconstructed = reconstruct_from_laplacian(laplacian)
+    absolute_error = np.abs(reconstructed - image)
+    mean_absolute_error = float(np.mean(absolute_error))
+    maximum_absolute_error = float(np.max(absolute_error))
+
+    output_directory = CODE_DIR.parent / "outputs" / "part2_3"
+    output_directory.mkdir(parents=True, exist_ok=True)
+    save_image(output_directory / "original.png", image)
+    save_image(output_directory / "reconstructed.png", reconstructed)
+    error_display_scale = maximum_absolute_error or 1.0
+    error_display = np.clip(absolute_error / error_display_scale, 0, 1)
+    save_image(output_directory / "absolute_error.png", error_display)
+    np.save(output_directory / "original.npy", image)
+    np.save(output_directory / "reconstructed.npy", reconstructed)
+    np.save(output_directory / "absolute_error.npy", absolute_error)
+
+    gaussian_figure = _pyramid_figure(
+        gaussian, output_directory / "gaussian_pyramid.png", "G"
+    )
+    laplacian_figure = _pyramid_figure(
+        laplacian,
+        output_directory / "laplacian_pyramid.png",
+        "L",
+        signed=True,
+    )
+    comparison_figure, axes = plt.subplots(1, 3, figsize=(12, 4))
+    axes[0].imshow(image)
+    axes[0].set_title("Original")
+    axes[1].imshow(np.clip(reconstructed, 0, 1))
+    axes[1].set_title("Reconstructed")
+    axes[2].imshow(error_display)
+    axes[2].set_title("Absolute error (contrast boosted)")
+    for axis in axes:
+        axis.axis("off")
+    comparison_figure.tight_layout()
+    comparison_figure.savefig(
+        output_directory / "reconstruction_comparison.png", dpi=150
+    )
+    plt.show()
+    plt.close(gaussian_figure)
+    plt.close(laplacian_figure)
+    plt.close(comparison_figure)
+
+    spatial_pixels = [level.shape[0] * level.shape[1] for level in gaussian]
+    total_pixel_count = sum(spatial_pixels)
+    pixel_ratio = total_pixel_count / spatial_pixels[0]
+    level_shapes = ", ".join(
+        f"{level.shape[1]}x{level.shape[0]}" for level in gaussian
+    )
+    summary = (
+        "Part 2.3: Gaussian and Laplacian Pyramids\n"
+        f"Input: {image_path}\n"
+        f"Input dimensions: {image.shape[1]} x {image.shape[0]}\n"
+        f"Gaussian level dimensions (largest to smallest): {level_shapes}\n"
+        f"Gaussian pyramid spatial pixel count: {total_pixel_count}\n"
+        f"Gaussian pyramid pixel ratio: {pixel_ratio:.6f} x the original\n"
+        f"Reconstruction mean absolute error: {mean_absolute_error:.12g}\n"
+        f"Reconstruction maximum absolute error: {maximum_absolute_error:.12g}\n"
+        f"Absolute-error PNG is contrast-boosted by {error_display_scale:.12g} for visibility only; "
+        "raw errors are in absolute_error.npy.\n\n"
+        "Theory\n"
+        "1. reduce() filters horizontally and vertically with the normalized "
+        "[1, 4, 6, 4, 1] kernel, then keeps every other row and column. Blurring "
+        "before sampling attenuates frequencies that would otherwise alias into "
+        "false coarse-scale patterns.\n"
+        "2. expand() inserts each sample at even row and column positions in a "
+        "zero-filled image, applies the same separable filter, and multiplies by "
+        "4 to compensate for the quarter-density 2D zero insertion.\n"
+        "3. The Gaussian pyramid starts with the original image and repeatedly "
+        "applies reduce(), storing levels from largest to smallest.\n"
+        "4. Each non-final Laplacian level is its Gaussian level minus the next "
+        "smaller Gaussian level expanded and cropped to the current size. It stores "
+        "the detail not predicted by the coarser level; the final level is the "
+        "smallest Gaussian image.\n"
+        "5. Reconstruction starts at the smallest Gaussian level and repeatedly "
+        "expands then adds the corresponding Laplacian residual. Since each residual "
+        "was defined as current level minus that exact expanded prediction, the sum "
+        "recovers the current level (up to floating-point roundoff). Odd-sized "
+        "levels are matched by dropping only the expanded image's last row and/or column.\n"
+        "6. Lecture 3's residual subtracts a level's own blurred copy, rather than "
+        "the expanded next Gaussian level. That residual is not the difference from "
+        "the reconstruction predictor, so expanding the coarser level and adding it "
+        "back does not generally recover the source exactly.\n"
+        "7. With dimensions halved in both directions, successive Gaussian levels "
+        "contain approximately 1, 1/4, 1/16, ... as many spatial pixels as the "
+        "original. The geometric series approaches 1/(1 - 1/4) = 4/3 for many "
+        "levels. A finite pyramid stops before that limit, and odd dimensions use "
+        "ceil-halving, so their actual ratio differs slightly from the ideal series.\n"
+    )
+    (output_directory / "summary.txt").write_text(summary, encoding="utf-8")
+    print(summary)
+    print(f"Saved Part 2.3 images, arrays, and summary under: {output_directory}")
+    return True
+
+
 def run_section(section, threshold=0.2, sigma=2.0, hybrid_options=None):
     """Run an implemented section, or report that it is not ready yet."""
     if section == "1.2":
@@ -610,6 +761,8 @@ def run_section(section, threshold=0.2, sigma=2.0, hybrid_options=None):
         return run_part_2_1(hybrid_options)
     if section == "2.2":
         return run_part_2_2(hybrid_options.aliasing_sigma)
+    if section == "2.3":
+        return run_part_2_3()
     if section != "1.1":
         print(f"Section {section} is not implemented yet.")
         return True

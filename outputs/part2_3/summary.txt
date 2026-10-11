@@ -1,0 +1,18 @@
+Part 2.3: Gaussian and Laplacian Pyramids
+Input: D:\starter_pack\starter_pack\images\part1_filters\facade.png
+Input dimensions: 736 x 670
+Gaussian level dimensions (largest to smallest): 736x670, 368x335, 184x168, 92x84, 46x42, 23x21, 12x11
+Gaussian pyramid spatial pixel count: 657587
+Gaussian pyramid pixel ratio: 1.333523 x the original
+Reconstruction mean absolute error: 7.66996120652e-20
+Reconstruction maximum absolute error: 2.22044604925e-16
+Absolute-error PNG is contrast-boosted by 2.22044604925e-16 for visibility only; raw errors are in absolute_error.npy.
+
+Theory
+1. reduce() filters horizontally and vertically with the normalized [1, 4, 6, 4, 1] kernel, then keeps every other row and column. Blurring before sampling attenuates frequencies that would otherwise alias into false coarse-scale patterns.
+2. expand() inserts each sample at even row and column positions in a zero-filled image, applies the same separable filter, and multiplies by 4 to compensate for the quarter-density 2D zero insertion.
+3. The Gaussian pyramid starts with the original image and repeatedly applies reduce(), storing levels from largest to smallest.
+4. Each non-final Laplacian level is its Gaussian level minus the next smaller Gaussian level expanded and cropped to the current size. It stores the detail not predicted by the coarser level; the final level is the smallest Gaussian image.
+5. Reconstruction starts at the smallest Gaussian level and repeatedly expands then adds the corresponding Laplacian residual. Since each residual was defined as current level minus that exact expanded prediction, the sum recovers the current level (up to floating-point roundoff). Odd-sized levels are matched by dropping only the expanded image's last row and/or column.
+6. Lecture 3's residual subtracts a level's own blurred copy, rather than the expanded next Gaussian level. That residual is not the difference from the reconstruction predictor, so expanding the coarser level and adding it back does not generally recover the source exactly.
+7. With dimensions halved in both directions, successive Gaussian levels contain approximately 1, 1/4, 1/16, ... as many spatial pixels as the original. The geometric series approaches 1/(1 - 1/4) = 4/3 for many levels. A finite pyramid stops before that limit, and odd dimensions use ceil-halving, so their actual ratio differs slightly from the ideal series.
