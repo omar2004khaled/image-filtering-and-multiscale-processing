@@ -1,0 +1,11 @@
+Bonus: Seam-Carving Object Removal and Seam Insertion
+Source photo: C:\Users\OMAR\Downloads\person3.jpg
+Mask source: interactive polygon selection
+Initial dimensions: 1000 x 563
+Final reduced dimensions: 964 x 563
+Seams removed (k): 36
+Restored dimensions: 1000 x 563
+Masked pixels remaining: 0
+Object removal uses float64 gradient energy and sets masked pixels to -1e6 before each minimum-seam search. The seam is removed from both the image and mask until the mask is empty.
+To restore width, k seams are found by removing seams from a copy of the reduced image while tracking original reduced-image columns. Those distinct locations are then inserted into the actual reduced image; each seam pixel is duplicated as left- and right-neighbor averages, using itself at borders. Finding seams on a copy avoids repeatedly choosing the same path after each insertion changes the image.
+The binary mask and selected polygon are saved for reproducibility. Use --select-bonus-mask to redraw the polygon interactively.

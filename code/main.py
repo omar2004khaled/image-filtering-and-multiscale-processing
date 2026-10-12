@@ -17,6 +17,14 @@ if str(CODE_DIR) not in sys.path:
 from benchmark_filters import main as run_convolution_benchmark
 from align_images import align_images, pick_points
 from aliasing import DEFAULT_SIGMA_SWEEP, aliasing_comparison, downsample_by_factor, sigma_sweep
+from bonus import (
+    draw_inserted_seams,
+    polygon_mask,
+    remove_masked_object,
+    restore_width_by_insertion,
+    save_bonus_outputs,
+    select_polygon_mask,
+)
 from blending import build_blended_laplacian_pyramid
 from filters import derivative_of_gaussian_edges, finite_difference_edges
 from hybrid_images import fourier_log_magnitude, make_hybrid
@@ -42,6 +50,7 @@ PART_SECTIONS = {
 }
 ALL_SECTIONS = PART_SECTIONS["1"] + PART_SECTIONS["2"] + PART_SECTIONS["3"]
 SUPPORTED_SELECTIONS = tuple(PART_SECTIONS) + ALL_SECTIONS + ("all",)
+SUPPORTED_SELECTIONS += ("bonus",)
 
 
 def _signed_image_for_display(image):
@@ -1235,6 +1244,111 @@ def run_part_3_2(personal_images=None):
     return True
 
 
+def run_bonus(interactive_mask=False):
+    """Remove the standing person from a personal photo and restore its width."""
+    print("Running Bonus seam-carving tests...")
+    suite = unittest.defaultTestLoader.discover(
+        start_dir=str(CODE_DIR),
+        pattern="test_bonus.py",
+        top_level_dir=str(CODE_DIR),
+    )
+    result = unittest.TextTestRunner(verbosity=2).run(suite)
+    if not result.wasSuccessful():
+        return False
+
+    image_path = Path.home() / "Downloads" / "person3.jpg"
+    if not image_path.is_file():
+        print(f"Personal bonus image was not found: {image_path}")
+        return False
+    image = _limit_image_size(load_image(image_path))
+    if interactive_mask:
+        mask = select_polygon_mask(image)
+        polygon_vertices = None
+    else:
+        normalized_vertices = np.array(
+            [
+                (0.482, 0.695), (0.489, 0.682), (0.499, 0.683),
+                (0.507, 0.697), (0.509, 0.721), (0.512, 0.741),
+                (0.520, 0.758), (0.519, 0.790), (0.514, 0.824),
+                (0.516, 0.882), (0.519, 0.999), (0.470, 0.999),
+                (0.474, 0.890), (0.476, 0.842), (0.468, 0.808),
+                (0.463, 0.781), (0.469, 0.758), (0.478, 0.744),
+                (0.479, 0.720),
+            ],
+            dtype=np.float64,
+        )
+        polygon_vertices = normalized_vertices * np.array(
+            [image.shape[1] - 1, image.shape[0] - 1]
+        )
+        mask = polygon_mask(image.shape, polygon_vertices)
+
+    output_directory = CODE_DIR.parent / "outputs" / "bonus"
+    output_directory.mkdir(parents=True, exist_ok=True)
+    np.save(output_directory / "initial_energy.npy", compute_energy(image))
+    reduced, seam_count, remaining_mask = remove_masked_object(image, mask)
+    remaining_mask_count = int(np.count_nonzero(remaining_mask))
+    if remaining_mask_count:
+        raise RuntimeError("object removal finished with masked pixels remaining")
+    restored, reduced_locations, inserted_positions = restore_width_by_insertion(
+        reduced, seam_count
+    )
+    if restored.shape != image.shape:
+        raise RuntimeError(
+            f"width restoration returned {restored.shape}, expected {image.shape}"
+        )
+    restored_overlay = draw_inserted_seams(restored, inserted_positions)
+    figure = save_bonus_outputs(
+        output_directory,
+        image,
+        mask,
+        reduced,
+        restored,
+        restored_overlay,
+        inserted_positions,
+    )
+    np.save(output_directory / "seams_found_on_reduced_copy.npy", reduced_locations)
+    if polygon_vertices is not None:
+        (output_directory / "mask_polygon.json").write_text(
+            json.dumps(
+                {
+                    "source_image": str(image_path),
+                    "vertices_xy": polygon_vertices.tolist(),
+                    "working_dimensions_wh": [image.shape[1], image.shape[0]],
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+    original_height, original_width = image.shape[:2]
+    summary = (
+        "Bonus: Seam-Carving Object Removal and Seam Insertion\n"
+        f"Source photo: {image_path}\n"
+        f"Mask source: {'interactive polygon selection' if interactive_mask else 'saved polygon around the person in person3.jpg'}\n"
+        f"Initial dimensions: {original_width} x {original_height}\n"
+        f"Final reduced dimensions: {reduced.shape[1]} x {reduced.shape[0]}\n"
+        f"Seams removed (k): {seam_count}\n"
+        f"Restored dimensions: {restored.shape[1]} x {restored.shape[0]}\n"
+        f"Masked pixels remaining: {remaining_mask_count}\n"
+        "Object removal uses float64 gradient energy and sets masked pixels to -1e6 "
+        "before each minimum-seam search. The seam is removed from both the image "
+        "and mask until the mask is empty.\n"
+        "To restore width, k seams are found by removing seams from a copy of the "
+        "reduced image while tracking original reduced-image columns. Those distinct "
+        "locations are then inserted into the actual reduced image; each seam pixel "
+        "is duplicated as left- and right-neighbor averages, using itself at borders. "
+        "Finding seams on a copy avoids repeatedly choosing the same path after each "
+        "insertion changes the image.\n"
+        "The binary mask and selected polygon are saved for reproducibility. Use "
+        "--select-bonus-mask to redraw the polygon interactively.\n"
+    )
+    (output_directory / "summary.txt").write_text(summary, encoding="utf-8")
+    plt.show()
+    plt.close(figure)
+    print(summary)
+    print(f"Saved Bonus results under: {output_directory}")
+    return True
+
+
 def run_section(section, threshold=0.2, sigma=2.0, hybrid_options=None):
     """Run an implemented section, or report that it is not ready yet."""
     if section == "1.2":
@@ -1253,6 +1367,8 @@ def run_section(section, threshold=0.2, sigma=2.0, hybrid_options=None):
         return run_part_3_1()
     if section == "3.2":
         return run_part_3_2(getattr(hybrid_options, "personal_image", None))
+    if section == "bonus":
+        return run_bonus(getattr(hybrid_options, "select_bonus_mask", False))
     if section != "1.1":
         print(f"Section {section} is not implemented yet.")
         return True
@@ -1371,6 +1487,11 @@ def main():
             "Part 3.2 personal image path; repeat exactly three times to replace "
             "the discovered local defaults"
         ),
+    )
+    parser.add_argument(
+        "--select-bonus-mask",
+        action="store_true",
+        help="interactively outline the object for the optional seam-carving Bonus",
     )
     arguments = parser.parse_args()
     return (
