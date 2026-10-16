@@ -73,7 +73,7 @@ def run_part_1_2(threshold):
     if not result.wasSuccessful():
         return False
 
-    image_path = CODE_DIR.parent / "images" / "part1_filters" / "cameraman.png"
+    image_path = CODE_DIR.parent / "images" / "part1_filters" / "facade.png"
     image = load_image(image_path, gray=True)
     dx, dy, magnitude, edges = finite_difference_edges(image, threshold)
     magnitude_maximum = float(magnitude.max())
@@ -81,7 +81,7 @@ def run_part_1_2(threshold):
         magnitude / magnitude_maximum if magnitude_maximum > 0 else magnitude
     )
 
-    print(f"Displaying cameraman edges with threshold {threshold:g}.")
+    print(f"Displaying facade edges with threshold {threshold:g}.")
     show(
         image,
         _signed_image_for_display(dx),
@@ -100,8 +100,8 @@ def run_part_1_2(threshold):
     return True
 
 
-def run_part_1_3(threshold, sigma):
-    """Test and display derivative-of-Gaussian edges on cameraman."""
+def run_part_1_3(threshold, sigma, finite_difference_threshold=0.2):
+    """Test and display derivative-of-Gaussian edges on facade."""
     print("Running Part 1.3 correctness tests...")
     suite = unittest.defaultTestLoader.discover(
         start_dir=str(CODE_DIR),
@@ -112,30 +112,31 @@ def run_part_1_3(threshold, sigma):
     if not result.wasSuccessful():
         return False
 
-    image_path = CODE_DIR.parent / "images" / "part1_filters" / "cameraman.png"
+    image_path = CODE_DIR.parent / "images" / "part1_filters" / "facade.png"
     image = load_image(image_path, gray=True)
     gaussian, dog_x, dog_y, ix, iy, magnitude, edges = (
         derivative_of_gaussian_edges(image, sigma=sigma, threshold=threshold)
     )
     _, _, _, finite_difference_edge_map = finite_difference_edges(
-        image, threshold=threshold
+        image, threshold=finite_difference_threshold
     )
 
     magnitude_maximum = float(magnitude.max())
     magnitude_display = magnitude / magnitude_maximum if magnitude_maximum > 0 else magnitude
+    gaussian_display = gaussian / float(gaussian.max())
     print(f"DoG sigma: {sigma:g}; edge threshold: {threshold:g}.")
     print(
         "DoG combines smoothing and differentiation, generally reducing "
         "sensitivity to small-scale noise."
     )
     print(
-        "Edge pixels: Part 1.2 = "
+        f"Edge pixels: Part 1.2 (threshold={finite_difference_threshold:g}) = "
         f"{np.count_nonzero(finite_difference_edge_map)}, Part 1.3 = "
         f"{np.count_nonzero(edges)}."
     )
     show(
         image,
-        gaussian,
+        gaussian_display,
         _signed_image_for_display(dog_x),
         _signed_image_for_display(dog_y),
         _signed_image_for_display(ix),
@@ -1349,12 +1350,18 @@ def run_bonus(interactive_mask=False):
     return True
 
 
-def run_section(section, threshold=0.2, sigma=2.0, hybrid_options=None):
+def run_section(
+    section, threshold=0.2, sigma=2.0, hybrid_options=None, dog_threshold=None
+):
     """Run an implemented section, or report that it is not ready yet."""
     if section == "1.2":
         return run_part_1_2(threshold)
     if section == "1.3":
-        return run_part_1_3(threshold, sigma)
+        return run_part_1_3(
+            threshold if dog_threshold is None else dog_threshold,
+            sigma,
+            finite_difference_threshold=threshold,
+        )
     if section == "2.1":
         return run_part_2_1(hybrid_options)
     if section == "2.2":
@@ -1388,8 +1395,17 @@ def run_section(section, threshold=0.2, sigma=2.0, hybrid_options=None):
     return True
 
 
-def run_selection(selection, threshold=0.2, sigma=2.0, hybrid_options=None):
+def run_selection(
+    selection, threshold=None, sigma=2.0, hybrid_options=None, dog_threshold=None
+):
     """Run one section, every section in a part, or all known sections."""
+    if threshold is None:
+        threshold = 0.2
+        if dog_threshold is None:
+            dog_threshold = 0.08
+    elif dog_threshold is None:
+        dog_threshold = threshold
+
     if selection == "all":
         sections = ALL_SECTIONS
     elif selection in PART_SECTIONS:
@@ -1399,7 +1415,9 @@ def run_selection(selection, threshold=0.2, sigma=2.0, hybrid_options=None):
 
     success = True
     for section in sections:
-        if not run_section(section, threshold, sigma, hybrid_options):
+        if not run_section(
+            section, threshold, sigma, hybrid_options, dog_threshold
+        ):
             success = False
             break
     return success
@@ -1418,8 +1436,17 @@ def main():
     parser.add_argument(
         "--threshold",
         type=float,
-        default=0.2,
-        help="edge threshold for Parts 1.2 and 1.3 (default: 0.2)",
+        default=None,
+        help=(
+            "Part 1.2 edge threshold (default: 0.2); when supplied, also sets "
+            "Part 1.3 unless --dog-threshold is given"
+        ),
+    )
+    parser.add_argument(
+        "--dog-threshold",
+        type=float,
+        default=None,
+        help="Part 1.3 edge threshold (default: 0.08)",
     )
     parser.add_argument(
         "--sigma",
@@ -1501,6 +1528,7 @@ def main():
             arguments.threshold,
             arguments.sigma,
             arguments,
+            arguments.dog_threshold,
         )
         else 1
     )

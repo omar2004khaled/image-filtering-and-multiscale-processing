@@ -38,7 +38,7 @@ class DifferenceOfGaussianTests(unittest.TestCase):
         self.assertGreater(ix[10, 12], 0)
         self.assertAlmostEqual(float(iy[10, 12]), 0.0, places=12)
 
-    def test_constant_image_has_near_zero_response_at_reflected_borders(self):
+    def test_zero_padding_produces_dog_frame_response_on_constant_image(self):
         image = np.full((12, 16), 0.37)
         results = derivative_of_gaussian_edges(
             image, sigma=1.1, threshold=1e-10
@@ -47,10 +47,10 @@ class DifferenceOfGaussianTests(unittest.TestCase):
 
         for result in (ix, iy, magnitude, edges):
             self.assertEqual(result.shape, image.shape)
-        np.testing.assert_allclose(ix, 0.0, atol=1e-14)
-        np.testing.assert_allclose(iy, 0.0, atol=1e-14)
-        np.testing.assert_allclose(magnitude, 0.0, atol=1e-14)
-        self.assertFalse(np.any(edges))
+        np.testing.assert_allclose(ix[4:-4, 5:-5], 0.0, atol=1e-14)
+        np.testing.assert_allclose(iy[5:-5, 4:-4], 0.0, atol=1e-14)
+        self.assertGreater(float(magnitude[0, :].max()), 1e-10)
+        self.assertTrue(np.any(edges[0, :]))
 
 
 if __name__ == "__main__":
