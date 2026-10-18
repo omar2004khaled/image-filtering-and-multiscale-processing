@@ -72,9 +72,11 @@ Record the image, energy map, requested width reduction, and seams drawn on the 
 
 ### 3.2 Results and Comparisons
 
-_To complete after all six images and comparisons are finalized._
+The person-outdoors comparison shows the difference between uniform scaling and content-aware reduction: normal resizing narrows the person along with the landscape, while seam carving removes more of the surrounding sky and field and leaves the upright figure closer to its original shape. Center cropping also preserves the figure's shape, but discards content at both sides.
 
-For each required and personal image, record the source dimensions, target width, resized result, center crop, seam-carved result, and energy function(s) used. Identify at least one failure case and explain what image content caused the failure. Include a side-by-side figure for every image and a seam comparison for one image.
+The group photo is a failure case for both energy choices. Finite-difference and DoG seams cross the people, including clothing and body regions, rather than removing only background. The tight framing leaves few expendable background columns, and gradient magnitude does not represent the semantic importance of a person; the carved image therefore crowds and locally distorts the group. The DoG energy map is smoother than the finite-difference map, but this smoothing does not prevent seams from crossing the subjects.
+
+The figures and measured dimensions for all six comparisons are saved under `outputs/part3_2/`. The group-photo energy figure overlays both seam sets, and `summary.txt` reports their removed-pixel mask Jaccard overlap rather than comparing seam order.
 
 ## Bonus: Object Removal
 

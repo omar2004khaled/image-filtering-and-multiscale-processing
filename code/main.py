@@ -1101,10 +1101,16 @@ def _save_energy_comparison(name, image, finite_results, output_directory):
         axis.imshow(panel, cmap="gray" if panel.ndim == 2 else None)
         axis.set_title(title)
         axis.axis("off")
-    figure.tight_layout()
+    figure.tight_layout(h_pad=2.0)
     figure.savefig(output_directory / "energy_comparison.png", dpi=150)
-    different_pixels = int(np.count_nonzero(finite_seams != dog_seams))
-    return dog_results, different_pixels, figure
+    row_indices = np.arange(image.shape[0])[np.newaxis, :]
+    finite_removed = np.zeros(image.shape[:2], dtype=bool)
+    dog_removed = np.zeros(image.shape[:2], dtype=bool)
+    finite_removed[row_indices, finite_seams] = True
+    dog_removed[row_indices, dog_seams] = True
+    intersection = int(np.count_nonzero(finite_removed & dog_removed))
+    union = int(np.count_nonzero(finite_removed | dog_removed))
+    return dog_results, (intersection, union), figure
 
 
 def run_part_3_2(personal_images=None):
@@ -1120,18 +1126,17 @@ def run_part_3_2(personal_images=None):
         return False
 
     using_default_images = personal_images is None
+    image_directory = CODE_DIR.parent / "images" / "part3_seams"
     if using_default_images:
-        home = Path.home()
         personal_images = (
-            home / "Downloads" / "A person.jpg",
-            home / "Downloads" / "A lake.jpg",
-            home / "Downloads" / "A failure case.jpg",
+            image_directory / "person_outdoors.jpg",
+            image_directory / "personal_lake.jpg",
+            image_directory / "group_failure_case.jpg",
         )
     if len(personal_images) != 3:
         print("Provide exactly three --personal-image paths, or omit them for the discovered defaults.")
         return False
 
-    image_directory = CODE_DIR.parent / "images" / "part3_seams"
     personal_names = (
         ("person_outdoors", "lake", "group_failure_case")
         if using_default_images
@@ -1171,47 +1176,22 @@ def run_part_3_2(personal_images=None):
 
     failure_name = personal_names[2]
     failure_output = output_root / failure_name
-    dog_results, differing_seam_pixels, energy_figure = _save_energy_comparison(
+    dog_results, mask_overlap, energy_figure = _save_energy_comparison(
         failure_name,
         working_images[failure_name],
         finite_results_by_name[failure_name],
         failure_output,
     )
+    intersection, union = mask_overlap
+    overlap_fraction = intersection / union if union else 1.0
     dog_report = (
         f"Energy comparison image: {failure_name}; finite-difference vs DoG "
-        f"(sigma=2.0) seam positions differ at {differing_seam_pixels} of "
-        f"{finite_results_by_name[failure_name]['seams'].size} seam-row positions.\n"
+        f"(sigma=2.0) removed-pixel mask Jaccard overlap: "
+        f"|A\u2229B| / |A\u222aB| = {intersection} / {union} "
+        f"= {overlap_fraction:.1%}.\n"
         f"DoG carved dimensions: {dog_results['seam_carved'].shape[1]} x "
         f"{dog_results['seam_carved'].shape[0]}.\n"
     )
-    failure_analysis = ""
-    if using_default_images:
-        group_seams = finite_results_by_name[failure_name]["seams"]
-        group_height, group_width = working_images[failure_name].shape[:2]
-        people_x_start = int(round(group_width * 0.05))
-        people_x_end = int(round(group_width * 0.95))
-        people_y_start = int(round(group_height * 0.15))
-        people_y_end = int(round(group_height * 0.85))
-        people_region = group_seams[:, people_y_start:people_y_end]
-        people_region_positions = int(
-            np.count_nonzero(
-                (people_region >= people_x_start)
-                & (people_region < people_x_end)
-            )
-        )
-        possible_people_positions = people_region.size
-        failure_analysis = (
-            "Observed failure case: A failure case.jpg, a tightly framed five-person "
-            "group photo. The seam overlay shows paths passing through human silhouettes "
-            "rather than removing only background; the carved result narrows the gaps "
-            "and locally compresses bodies, although all five people remain recognizable. "
-            f"Within the central people region (x=5%-95%, y=15%-85%), "
-            f"{people_region_positions} of {possible_people_positions} seam-row "
-            f"positions ({people_region_positions / possible_people_positions:.1%}) "
-            "pass through the group. Gradient energy measures local intensity change, "
-            "not semantic importance; low-contrast clothing and spaces between bodies "
-            "can remain inexpensive paths, so repeated seam removal damages the group.\n"
-        )
     summary = (
         "Part 3.2: Results and Comparisons\n"
         "Each working image is capped at 1000 pixels on its longest side before "
@@ -1224,11 +1204,6 @@ def run_part_3_2(personal_images=None):
         "for the six standard comparisons.\n"
         + "".join(reports)
         + dog_report
-        + failure_analysis
-        + "Observed comparison: inspect each four-panel figure for structures that "
-        "remain recognizable under seam carving versus details removed by center crop. "
-        "The person-outdoors figure preserves the person's height and proportions "
-        "better than normal resizing.\n"
         + "The finite-difference and DoG energy maps differ in smoothing and edge "
         "response; their distinct seam sets are shown in the energy-comparison "
         "figure, with finite-difference paths in red and DoG paths in cyan.\n"

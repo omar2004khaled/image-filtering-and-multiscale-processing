@@ -21,7 +21,9 @@ def compute_energy(image):
     """Return Part 1.2's gradient magnitude as a grayscale pixel-energy map."""
     image = _as_image(image)
     gray_image = to_grayscale(image)
-    _, _, gradient_magnitude, _ = finite_difference_edges(gray_image)
+    _, _, gradient_magnitude, _ = finite_difference_edges(
+        gray_image, padding_mode="reflect"
+    )
     return gradient_magnitude
 
 
@@ -29,7 +31,9 @@ def compute_dog_energy(image, sigma=2.0):
     """Return the Part 1.3 DoG gradient magnitude as a pixel-energy map."""
     image = _as_image(image)
     gray_image = to_grayscale(image)
-    return derivative_of_gaussian_edges(gray_image, sigma=sigma)[5]
+    return derivative_of_gaussian_edges(
+        gray_image, sigma=sigma, padding_mode="reflect"
+    )[5]
 
 
 def find_vertical_seam(energy):

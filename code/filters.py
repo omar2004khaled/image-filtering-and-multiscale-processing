@@ -74,8 +74,8 @@ def convolve_separable(
     )
 
 
-def finite_difference_edges(image, threshold=0.2):
-    """Return zero-padded finite differences, gradient magnitude, and edge mask."""
+def finite_difference_edges(image, threshold=0.2, padding_mode="constant"):
+    """Return finite differences, gradient magnitude, and edge mask."""
     image = np.asarray(image, dtype=np.float64)
     if image.ndim != 2 or image.size == 0:
         raise ValueError("image must be a non-empty 2D grayscale array")
@@ -84,8 +84,8 @@ def finite_difference_edges(image, threshold=0.2):
 
     derivative_x = np.array([[1.0, 0.0, -1.0]])
     derivative_y = derivative_x.T
-    dx = convolve_separable(image, derivative_x, padding_mode="constant")
-    dy = convolve_separable(image, derivative_y, padding_mode="constant")
+    dx = convolve_separable(image, derivative_x, padding_mode=padding_mode)
+    dy = convolve_separable(image, derivative_y, padding_mode=padding_mode)
     gradient_magnitude = np.sqrt(dx ** 2 + dy ** 2)
     edges = gradient_magnitude >= threshold
     return dx, dy, gradient_magnitude, edges
@@ -138,8 +138,10 @@ def derivative_of_gaussian_filters(sigma, size=None):
     return gaussian, dog_x, dog_y
 
 
-def derivative_of_gaussian_edges(image, sigma=2.0, threshold=0.2, size=None):
-    """Filter an image with DoG kernels using zero padding and threshold it."""
+def derivative_of_gaussian_edges(
+    image, sigma=2.0, threshold=0.2, size=None, padding_mode="constant"
+):
+    """Filter an image with DoG kernels and threshold the gradient magnitude."""
     image = np.asarray(image, dtype=np.float64)
     if image.ndim != 2 or image.size == 0:
         raise ValueError("image must be a non-empty 2D grayscale array")
@@ -147,8 +149,8 @@ def derivative_of_gaussian_edges(image, sigma=2.0, threshold=0.2, size=None):
         raise ValueError("threshold must be a finite non-negative value")
 
     gaussian, dog_x, dog_y = derivative_of_gaussian_filters(sigma, size=size)
-    ix = convolve_separable(image, dog_x, padding_mode="constant")
-    iy = convolve_separable(image, dog_y, padding_mode="constant")
+    ix = convolve_separable(image, dog_x, padding_mode=padding_mode)
+    iy = convolve_separable(image, dog_y, padding_mode=padding_mode)
     gradient_magnitude = np.sqrt(ix ** 2 + iy ** 2)
     edges = gradient_magnitude >= threshold
     return gaussian, dog_x, dog_y, ix, iy, gradient_magnitude, edges

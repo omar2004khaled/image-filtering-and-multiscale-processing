@@ -43,7 +43,9 @@ class SeamCarvingComparisonTests(unittest.TestCase):
         finite_difference = compute_energy(image)
         dog = compute_dog_energy(image, sigma=1.4)
         expected_dog = derivative_of_gaussian_edges(
-            np.dot(image, [0.299, 0.587, 0.114]), sigma=1.4
+            np.dot(image, [0.299, 0.587, 0.114]),
+            sigma=1.4,
+            padding_mode="reflect",
         )[5]
 
         self.assertEqual(finite_difference.shape, image.shape[:2])

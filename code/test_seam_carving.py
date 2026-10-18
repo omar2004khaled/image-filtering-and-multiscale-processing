@@ -7,6 +7,7 @@ import numpy as np
 from seam_carving import (
     carve_horizontal,
     carve_vertical,
+    compute_dog_energy,
     compute_energy,
     draw_seams,
     find_vertical_seam,
@@ -24,6 +25,15 @@ class SeamCarvingTests(unittest.TestCase):
         self.assertEqual(energy.shape, image.shape[:2])
         self.assertTrue(np.isfinite(energy).all())
         self.assertGreater(float(energy[:, 5:7].max()), 0.0)
+
+    def test_reflect_padding_avoids_artificial_energy_on_constant_image(self):
+        image = np.full((12, 15, 3), 0.4)
+
+        finite_difference = compute_energy(image)
+        dog = compute_dog_energy(image)
+
+        np.testing.assert_allclose(finite_difference, 0.0, atol=1e-12)
+        np.testing.assert_allclose(dog, 0.0, atol=1e-12)
 
     def test_dynamic_program_finds_minimum_connected_seam(self):
         energy = np.array(
