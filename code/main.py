@@ -785,12 +785,21 @@ def _ellipse_mask(shape, center, radii):
     return mask
 
 
+def _ellipse_union_mask(shape, ellipses):
+    """Return a mask whose black region is the union of the supplied ellipses."""
+    mask = np.ones(shape, dtype=np.float64)
+    for center, axes, angle in ellipses:
+        cv2.ellipse(mask, center, axes, angle, 0, 360, 0.0, thickness=-1)
+    return mask
+
+
 def _save_blend_pyramid(levels, output_directory, folder_name, figure_name, prefix,
-                        signed=False):
+                        signed=False, reconstruction=None):
     """Save pyramid arrays and a labeled display figure for a blend example."""
     level_directory = output_directory / folder_name
     level_directory.mkdir(parents=True, exist_ok=True)
-    figure, axes = plt.subplots(1, len(levels), figsize=(3.0 * len(levels), 3.5))
+    panel_count = len(levels) + int(reconstruction is not None)
+    figure, axes = plt.subplots(1, panel_count, figsize=(3.0 * panel_count, 3.5))
     axes = np.atleast_1d(axes)
     for index, (axis, level) in enumerate(zip(axes, levels)):
         if signed and index < len(levels) - 1:
@@ -813,6 +822,10 @@ def _save_blend_pyramid(levels, output_directory, folder_name, figure_name, pref
         axis.axis("off")
         np.save(level_directory / f"level_{index:02d}.npy", level)
         save_image(level_directory / f"level_{index:02d}.png", displayed)
+    if reconstruction is not None:
+        axes[-1].imshow(np.clip(reconstruction, 0, 1))
+        axes[-1].set_title("Sum / reconstruction")
+        axes[-1].axis("off")
     figure.tight_layout()
     figure.savefig(output_directory / figure_name, dpi=150)
     return figure
@@ -833,10 +846,15 @@ def _run_blend_example(name, first, second, mask, description, min_size=16):
     save_image(output_directory / "second_image.png", second)
     save_image(output_directory / "mask.png", mask)
     save_image(output_directory / "blended.png", blended)
+    hard_cut = mask[..., np.newaxis] * first + (
+        1.0 - mask[..., np.newaxis]
+    ) * second
+    save_image(output_directory / "hard_cut.png", hard_cut)
     np.save(output_directory / "first_image.npy", first)
     np.save(output_directory / "second_image.npy", second)
     np.save(output_directory / "mask.npy", mask)
     np.save(output_directory / "blended.npy", blended)
+    np.save(output_directory / "hard_cut.npy", hard_cut)
 
     for label, levels in (
         ("first_laplacian_pyramid", first_laplacian),
@@ -860,11 +878,18 @@ def _run_blend_example(name, first, second, mask, description, min_size=16):
         "blended_laplacian_pyramid.png",
         "L",
         signed=True,
+        reconstruction=blended,
     )
 
-    comparison, axes = plt.subplots(1, 4, figsize=(15, 4))
-    comparison_images = (first, second, mask, np.clip(blended, 0, 1))
-    comparison_titles = ("First image", "Second image", "Sharp input mask", "Multiresolution blend")
+    comparison, axes = plt.subplots(1, 5, figsize=(19, 4))
+    comparison_images = (first, second, mask, hard_cut, np.clip(blended, 0, 1))
+    comparison_titles = (
+        "First image",
+        "Second image",
+        "Sharp input mask",
+        "Hard cut",
+        "Multiresolution blend",
+    )
     for axis, image, title in zip(axes, comparison_images, comparison_titles):
         axis.imshow(
             image,
@@ -899,7 +924,7 @@ def _run_blend_example(name, first, second, mask, description, min_size=16):
 
 
 def run_part_2_4():
-    """Create the starter-pack oraple and irregular eye-on-hand blend examples."""
+    """Create the oraple, practice blend, and two irregular custom blends."""
     print("Running Part 2.4 multiresolution blending tests...")
     suite = unittest.defaultTestLoader.discover(
         start_dir=str(CODE_DIR),
@@ -936,6 +961,54 @@ def run_part_2_4():
         eye_mask,
         "Eye aligned to the palm using README landmarks; the black elliptical mask "
         "selects the eye and the white region keeps the hand.",
+    )
+
+    sunflower_path = image_directory / "sunflower.jpg"
+    sunflower = load_image(sunflower_path)
+    cat_path = CODE_DIR.parent / "images" / "part1_filters" / "cat.jpg"
+    cat = load_image(cat_path)
+    cat_points = [(330, 300), (440, 300)]
+    sunflower_points = [(190, 204), (250, 204)]
+    aligned_cat = align_images(sunflower, cat, sunflower_points, cat_points)
+    cat_mask = _ellipse_union_mask(
+        sunflower.shape[:2],
+        [
+            ((220, 200), (78, 76), -2),
+            ((178, 145), (31, 43), -18),
+            ((262, 145), (31, 43), 18),
+        ],
+    )
+    _run_blend_example(
+        "cat-on-sunflower",
+        sunflower,
+        aligned_cat,
+        cat_mask,
+        "Cat eyes aligned across the sunflower center; overlapping ellipses form "
+        "a head-and-ears mask that selects the cat while keeping the petals.",
+    )
+
+    man = load_image(image_directory / "hybrid_man.jpg")
+    aligned_man = align_images(
+        apple,
+        man,
+        [(210, 222), (300, 222)],
+        [(300, 342), (443, 333)],
+    )
+    face_mask = _ellipse_union_mask(
+        apple.shape[:2],
+        [
+            ((255, 255), (101, 116), -3),
+            ((255, 184), (78, 55), -3),
+            ((255, 327), (58, 37), 0),
+        ],
+    )
+    _run_blend_example(
+        "face-on-apple",
+        apple,
+        aligned_man,
+        face_mask,
+        "The portrait's eyes align across the apple; three overlapping ellipses "
+        "make an irregular face-shaped mask that selects the portrait.",
     )
 
     print("Saved Part 2.4 examples under: outputs/part2_4")

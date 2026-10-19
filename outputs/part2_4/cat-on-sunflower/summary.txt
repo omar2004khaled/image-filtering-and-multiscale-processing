@@ -1,0 +1,5 @@
+Part 2.4 multiresolution blend: cat-on-sunflower
+Description: Cat eyes aligned across the sunflower center; overlapping ellipses form a head-and-ears mask that selects the cat while keeping the petals.
+Pyramid levels (largest to smallest): 612x408, 306x204, 153x102, 77x51, 39x26, 20x13
+Blend formula at each level: M * L1 + (1 - M) * L2
+The input mask is binary and unchanged. Its Gaussian pyramid softens the transition over wider areas at coarser levels. Source Laplacian pyramids and the blended reconstruction are stored as floating-point .npy files.
